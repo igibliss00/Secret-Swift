@@ -10,6 +10,7 @@ import UIKit
 
 class ViewController: UIViewController {
     @IBOutlet var secret: UITextView!
+    var isUnlocked = false
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -17,11 +18,6 @@ class ViewController: UIViewController {
         notificationCenter.addObserver(self, selector: #selector(adjustForKeyboard), name: UIResponder.keyboardWillHideNotification, object:nil)
         notificationCenter.addObserver(self, selector: #selector(adjustForKeyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         notificationCenter.addObserver(self, selector: #selector(saveSecretMessage), name: UIApplication.willResignActiveNotification, object: nil)
-        
-//        if secret.isHidden == false {
-            navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(saveSecretMessage))
-//        }
-        
     }
     
     @IBAction func authenticateTapped(_ sender: Any) {
@@ -45,11 +41,35 @@ class ViewController: UIViewController {
             }
         } else {
             // no biemetry
-            let ac = UIAlertController(title: "Biometry unavailable", message: "Your device is not configured for biometric authentication", preferredStyle: .alert)
-            ac.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-            present(ac, animated: true)
+            let ac = UIAlertController(title: "Biometry unavailable", message: "Use your passowrd to log in", preferredStyle: .alert)
+            ac.addTextField()
+            let password = KeychainWrapper.standard.string(forKey: "password")
+            if password != "" {
+                ac.addAction(UIAlertAction(title: "Enter", style: .default, handler: { [weak self, weak ac](_) in
+                    guard let answer = ac?.textFields?[0].text else { return }
+                    if password == answer {
+                        self?.unlockSecretMessage()
+                    } else {
+                        // wrong password
+                        let wrongPasswordController = UIAlertController(title: "Wrong Password", message: nil, preferredStyle: .alert)
+                        wrongPasswordController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+                        self?.present(wrongPasswordController, animated: true)
+                    }
+                }))
+                ac.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+                present(ac, animated: true)
+            } else {
+                // no pre-existing password. Create a new one
+                let passwordController = UIAlertController(title: "Create a new password", message: nil, preferredStyle: .alert)
+                passwordController.addTextField()
+                passwordController.addAction(UIAlertAction(title: "Done", style: .default, handler: { (_) in
+                    guard let newPassword = passwordController.textFields?[0].text else { return }
+                    KeychainWrapper.standard.set(newPassword, forKey: "password")
+                }))
+                passwordController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+                present(passwordController, animated: true)
+            }
         }
-        
     }
     
     @objc func adjustForKeyboard(notification: Notification) {
@@ -72,8 +92,8 @@ class ViewController: UIViewController {
     
     func unlockSecretMessage() {
         secret.isHidden = false
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(saveSecretMessage))
         title = "Secret Stuff!"
-        
         secret.text = KeychainWrapper.standard.string(forKey: "SecretMessage") ?? ""
     }
     
@@ -83,6 +103,7 @@ class ViewController: UIViewController {
         KeychainWrapper.standard.set(secret.text, forKey: "SecretMessage")
         secret.resignFirstResponder()
         secret.isHidden = true
+        navigationItem.rightBarButtonItem = nil
         title = "Nothing to see here"
     }
 }
